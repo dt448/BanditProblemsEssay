@@ -1,0 +1,416 @@
+---
+title: "Untitled"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r pressure, echo=FALSE}
+#simulates the rewards of a bandit
+simulate.stochBandit = function(K = 10, n = 500, rewardsVar = 1){
+  
+  mu_i = rnorm(K, mean = 0,sd = 1) # This generates the random expectations of each arm. 
+  cat("Mu_i:", mu_i)
+  rewards = sapply(mu_i, function(x)rnorm(n, x, rewardsVar)) # draw the rewards based on the emeans
+  
+  list(mu_i = mu_i, rewards = rewards)
+}
+
+```
+
+
+
+
+```{r pressure, echo=FALSE}
+
+
+play.agentepsGreedy = function(K = 10, n = 500, rewardsVar = 0.1, epsilon = 0.1){
+  
+  simulatedGame = simulate.stochBandit(K, n, rewardsVar)
+  mu_i = simulatedGame$mu_i # expectation of each arm
+  rewards = simulatedGame$rewards # the simulated rewards
+  
+  optimArmIdx = which.max(mu_i) # finds the optimum arm
+  empricalMeans = rep(0, K) # will contain cumulative rewards for each arm
+  rewardHist = rep(0, n) #
+  optimalHist = rep(0, n) # used to make optimal percentage histogram
+  pulls = rep(0,K) # a record of how many times each arm will be pulled
+  
+  probs = runif(n)  #used for epsilon checking
+  #cat("\n empricalMeans:", empricalMeans) 
+  # vetorizar
+  for (t in 1:n){
+     
+    #idx = ifelse(probs[i] < eps, sample(arms, 1), which.max(slot.rewards))
+    if(DEBUG) cat("\n probs[i]:", probs[t], "epsilon",epsilon,"smaller?", probs[t] < epsilon )
+    I_t = if(probs[t] < epsilon){ sample(K, 1)}else{ which.max(empricalMeans)} # e-psilon greedy pick random or the max I_t is the selected arm
+
+    
+    pulls[I_t] = pulls[I_t] + 1
+    rewardHist[t] = rewards[t, I_t] #"draw that arm"
+    
+    if (I_t == optimArmIdx){ #"check if this arm was the optimum"
+      optimalHist[t] = 1 #"if this arm is the optimum then give a point to the optimal histogram"
+      }
+    
+    if(DEBUG) cat("\n empricalMeans[I_t]:", empricalMeans[I_t],"rewardHist[i]",rewardHist[t],"pulls[I_t]",pulls[I_t])
+    
+    empricalMeans[I_t] = empricalMeans[I_t] + (rewardHist[t] - empricalMeans[I_t])/(pulls[I_t]) # iteratively storing empirical mean
+    if(DEBUG2) cat("\n empricalMeans:", empricalMeans)
+    
+  }
+  
+  list(empricalMeans = empricalMeans, rewardHist = rewardHist, optimalHist = optimalHist, pulls = pulls)
+}
+```
+
+
+```{r}
+
+play.agentETE = function(K = 10, n = 500, rewardsVar = 0.1, m = 10){
+  
+  simulatedGame = simulate.stochBandit(K, n, rewardsVar)
+  mu_i = simulatedGame$mu_i # expectation of each arm
+  rewards = simulatedGame$rewards # the simulated rewards
+  
+  optimArmIdx = which.max(mu_i) # finds the optimum arm
+  empricalMeans = rep(0, K) # will contain cumulative rewards for each arm
+  rewardHist = rep(0, n) #
+  optimalHist = rep(0, n) # used to make optimal percentage histogram
+  pulls = rep(0,K) # a record of how many times each arm will be pulled
+  
+  for (t in 1:n){
+     
+    #idx = ifelse(probs[i] < eps, sample(arms, 1), which.max(slot.rewards))
+    I_t = if(t < m*K){  t%%K+1 }else{ which.max(empricalMeans)} # e-psilon greedy pick random or the max I_t is the selected arm
+
+    #cat("\n I_t:",I_t)
+    pulls[I_t] = pulls[I_t] + 1
+    rewardHist[t] = rewards[t, I_t] #"draw that arm"
+    
+    if (I_t == optimArmIdx){ #"check if this arm was the optimum"
+      optimalHist[t] = 1 #"if this arm is the optimum then give a point to the optimal histogram"
+      }
+    
+    if(DEBUG) cat("\n empricalMeans[I_t]:", empricalMeans[I_t],"rewardHist[i]",rewardHist[t],"pulls[I_t]",pulls[I_t])
+    
+    empricalMeans[I_t] = empricalMeans[I_t] + (rewardHist[t] - empricalMeans[I_t])/(pulls[I_t]) # iteratively storing empirical mean
+    if(DEBUG2) cat("\n empricalMeans:", empricalMeans)
+    
+  }
+  
+  list(empricalMeans = empricalMeans, rewardHist = rewardHist, optimalHist = optimalHist, pulls = pulls)
+}
+
+```
+
+
+```{r}
+
+play.agentUCB = function(K = 10, n = 500, rewardsVar = 0.1,m){
+  
+  simulatedGame = simulate.stochBandit(K, n, rewardsVar)
+  mu_i = simulatedGame$mu_i # expectation of each arm
+  rewards = simulatedGame$rewards # the simulated rewards
+  
+  optimArmIdx = which.max(mu_i) # finds the optimum arm
+  empricalMeans = rep(0, K) # will contain cumulative rewards for each arm
+  rewardHist = rep(0, n) #
+  optimalHist = rep(0, n) # used to make optimal percentage histogram
+  pulls = rep(0,K) # a record of how many times each arm will be pulled
+  conIntvlUB = rep(0,K) # Reccords the confidence interval upper bound.
+  
+  for (t in 1:n){
+     
+    #idx = ifelse(probs[i] < eps, sample(arms, 1), which.max(slot.rewards))
+    I_t = if(t < K){  t }else{ which.max(empricalMeans+conIntvlUB)} # e-psilon greedy pick random or the max I_t is the selected arm
+
+    #cat("\n I_t:",I_t)
+    pulls[I_t] = pulls[I_t] + 1
+    rewardHist[t] = rewards[t, I_t] #"draw that arm"
+    
+    if (I_t == optimArmIdx){ #"check if this arm was the optimum"
+      optimalHist[t] = 1 #"if this arm is the optimum then give a point to the optimal histogram"
+      }
+    
+    if(DEBUG) cat("\n empricalMeans[I_t]:", empricalMeans[I_t],"rewardHist[i]",rewardHist[t],"pulls[I_t]",pulls[I_t])
+    
+    empricalMeans[I_t] = empricalMeans[I_t] + (rewardHist[t] - empricalMeans[I_t])/(pulls[I_t]) # iteratively storing empirical mean
+    conIntvlUB[I_t]  = sqrt((2*rewardsVar*log(1+(t*log(t)^2)))/(pulls[I_t]-1))
+    
+    if(DEBUG2) cat("\n empricalMeans:", empricalMeans)
+    
+  }
+  
+  list(empricalMeans = empricalMeans, rewardHist = rewardHist, optimalHist = optimalHist, pulls = pulls)
+}
+
+
+```
+
+```{r pressure, echo=FALSE}
+run.simulation = function( trails = 100, K = 10, n = 1000, rewardsVar = 0.1, eps = c(0.0, 0.01, 0.1)){
+  # N is the number of experiments
+  # plays is the amount last rounds 
+  # mu is the starting mean
+  
+  
+  numPlayers = length(eps)
+  colNames = paste('eps', eps)
+  rewardsHist = matrix(0, nrow = n, ncol = numPlayers)
+  optimalHist = matrix(0, nrow = n, ncol = numPlayers)
+  colnames(rewardsHist) = colNames
+  colnames(optimalHist) = colNames
+  
+  for (p in 1:numPlayers){
+    for (i in 1:trails){
+      cat("\n Currently at:", "Player",p, "Trail:", i , "\n")
+      playResults = play.agentUCB(K, n, rewardsVar, m = eps[p])
+      rewardsHist[, p] = rewardsHist[, p] + playResults$rewardHist
+      optimalHist[, p] = optimalHist[, p] + playResults$optimalHist
+    } 
+  }
+  
+  rewardsHist = rewardsHist/trails
+  optimalHist = optimalHist/trails
+  optimalHist = apply(optimalHist, 2, function(x)cumsum(x)/(1:n))
+  
+  ### Plot helper ###
+  plot.result = function(x, n.series, colors, leg.names, ...){
+    for (i in 1:n.series){
+      if (i == 1)
+        plot.ts(x[, i], ylim = 2*range(x), col = colors[i], ...)
+      else
+        lines(x[, i], col = colors[i], ...)
+      grid(col = 'lightgray')
+    }
+    legend('topright', leg.names, col = colors, lwd = 2, cex = 0.6, box.lwd = NA)
+  }
+  ### Plot helper ###
+  
+  #### Plots ####
+  require(RColorBrewer)
+  colors = brewer.pal(numPlayers, 'Set2')
+  op <-par(mfrow = c(2, 1), no.readonly = TRUE)
+  
+  plot.result(rewardsHist, numPlayers, colors, colNames, xlab = 't', ylab = 'Average reward', lwd = 2)
+  plot.result(optimalHist, numPlayers, colors, colNames, xlab = 't', ylab = 'Optimal move %', lwd = 2)
+  #### Plots ####
+  
+  par(op)
+}
+
+
+
+```
+
+
+
+```{r}
+DEBUG = F
+DEBUG2 = F
+
+run.simulation(K = 50,trails = 500,n=500,eps = c(5,10,20))
+
+```
+
+
+
+
+```{r}
+
+simulate.advBandit = function(K = 10, n = 1000, rewardsVar = 1,maxNumChanges = 10){
+  
+  numTimeChanges = ceiling(runif(1,1,maxNumChanges))
+  timeChangePoints = sort(sample(n-1,size = numTimeChanges-1,F),F)
+  timeChangePoints[numTimeChanges] = n
+  
+  #cat("\n timeChangePoints:", timeChangePoints)
+  for(i in 1:numTimeChanges){
+      
+      #cat("\n Mu_i:", mu_i)
+      if(i==1){
+         mu_i = rnorm(K, mean = 0,sd = 1) # This generates the random expectations of each arm. 
+        rewards = sapply(mu_i, function(x)rnorm(timeChangePoints[i], x, rewardsVar))} # draw the rewards based on the emeans
+      else{
+        mu_i = rbind(mu_i,mu_i = rnorm(K, mean = 0,sd = 1) )
+        rewards = rbind(rewards,sapply(mu_i[i,], function(x)rnorm(timeChangePoints[i]-timeChangePoints[i-1], x, rewardsVar)))
+      }
+      #cat("\n length(rewards):", length(rewards))
+      }
+  list(mu_i = mu_i, rewards = rewards, timeChangePoints = timeChangePoints)
+}
+
+test = simulate.advBandit()
+nrow(test$rewards)
+
+```
+
+
+```{r}
+
+
+
+play.agentEXP3 = function(K = 10, n = 5000, rewardsVar = 1, maxNumChanges =100,m){
+  
+  
+    
+  simulatedGame = simulate.advBandit(K, n, rewardsVar)
+  mu_i = simulatedGame$mu_i # expectation of each arm
+  rewards = simulatedGame$rewards # the simulated rewards
+  timeChangePoints = simulatedGame$timeChangePoints
+  
+  empricalMeans = rep(0, K) # will contain cumulative rewards for each arm
+  rewardHist = rep(0, n) #
+  optimalHist = rep(0, n) # used to make optimal percentage histogram
+  pulls = rep(0,K) # a record of how many times each arm will be pulled
+  tChngeIdx = 1
+  optimArmIdx = which.max(mu_i[tChngeIdx])
+  
+  policy = rep(1,K)
+  estCumLoss = rep(0,K)
+  
+  for (t in 1:n){
+  
+    #idx = ifelse(probs[i] < eps, sample(arms, 1), which.max(slot.rewards))
+    
+    I_t = sample(K,1,prob = policy) # e-psilon greedy pick random or the max I_t is the selected arm
+
+    #cat("\n I_t:",I_t)
+    pulls[I_t] = pulls[I_t] + 1
+    rewardHist[t] = rewards[t, I_t] #"draw that arm"
+    #cat("\n pulls[I_t] ",pulls[I_t], "rewardHist[t] ",rewardHist[t])
+    eta_t = sqrt((log(K))/(n*K))
+    estCumLoss[I_t] = estCumLoss[I_t]+rewardHist[t] /policy[I_t]
+    normConsnt = sum(sapply(estCumLoss, function(x) exp(eta_t*x)))
+    
+    cat("\n estCumLoss ",estCumLoss[I_t], "eta_t ",eta_t ,"normConsnt",normConsnt,"policy[I_t] ",policy[I_t] )
+    
+    policy[I_t] = (exp(eta_t*estCumLoss[I_t])) / (normConsnt)
+    
+    cat("policy[I_t] ",policy[I_t] )
+    
+    
+    if(t>timeChangePoints[tChngeIdx]){
+      cat("\n Time Changed")
+      tChngeIdx = tChngeIdx + 1
+      optimArmIdx = which.max(mu_i[tChngeIdx]) } # finds the optimum arm
+    
+    if (I_t == optimArmIdx){ #"check if this arm was the optimum"
+      optimalHist[t] = 1 #"if this arm is the optimum then give a point to the optimal histogram"
+      }
+    
+    if(DEBUG) cat("\n empricalMeans[I_t]:", empricalMeans[I_t],"rewardHist[i]",rewardHist[t],"pulls[I_t]",pulls[I_t])
+    
+    #empricalMeans[I_t] = empricalMeans[I_t] + (rewardHist[t] - empricalMeans[I_t])/(pulls[I_t]) # iteratively storing empirical mean
+    #conIntvlUB[I_t]  = sqrt((2*rewardsVar*log(1+(t*log(t)^2)))/(pulls[I_t]-1))
+    
+    if(DEBUG2) cat("\n empricalMeans:", empricalMeans)
+    
+  }
+  
+  list(empricalMeans = empricalMeans, rewardHist = rewardHist, optimalHist = optimalHist, pulls = pulls)
+}
+
+
+```
+
+```{r pressure, echo=FALSE}
+run.simulation = function( trails = 100, K = 10, n = 1000, rewardsVar = 0.1, eps = c(0.0, 0.01, 0.1)){
+  # N is the number of experiments
+  # plays is the amount last rounds 
+  # mu is the starting mean
+  
+  
+  numPlayers = length(eps)
+  colNames = paste('eps', eps)
+  rewardsHist = matrix(0, nrow = n, ncol = numPlayers)
+  optimalHist = matrix(0, nrow = n, ncol = numPlayers)
+  colnames(rewardsHist) = colNames
+  colnames(optimalHist) = colNames
+  
+  for (p in 1:numPlayers){
+    for (i in 1:trails){
+      cat("\n Currently at:", "Player",p, "Trail:", i , "\n")
+      playResults = play.agentEXP3(K, n, rewardsVar, m = eps[p])
+      rewardsHist[, p] = rewardsHist[, p] + playResults$rewardHist
+      optimalHist[, p] = optimalHist[, p] + playResults$optimalHist
+    } 
+  }
+  
+  rewardsHist = rewardsHist/trails
+  optimalHist = optimalHist/trails
+  optimalHist = apply(optimalHist, 2, function(x)cumsum(x)/(1:n))
+  
+  ### Plot helper ###
+  plot.result = function(x, n.series, colors, leg.names, ...){
+    for (i in 1:n.series){
+      if (i == 1)
+        plot.ts(x[, i], ylim = 2*range(x), col = colors[i], ...)
+      else
+        lines(x[, i], col = colors[i], ...)
+      grid(col = 'lightgray')
+    }
+    legend('topright', leg.names, col = colors, lwd = 2, cex = 0.6, box.lwd = NA)
+  }
+  ### Plot helper ###
+  
+  #### Plots ####
+  require(RColorBrewer)
+  colors = brewer.pal(numPlayers, 'Set2')
+  op <-par(mfrow = c(2, 1), no.readonly = TRUE)
+  
+  plot.result(rewardsHist, numPlayers, colors, colNames, xlab = 't', ylab = 'Average reward', lwd = 2)
+  plot.result(optimalHist, numPlayers, colors, colNames, xlab = 't', ylab = 'Optimal move %', lwd = 2)
+  #### Plots ####
+  
+  par(op)
+}
+
+
+
+```
+
+
+
+```{r}
+DEBUG = F
+DEBUG2 = F
+
+run.simulation(K = 5,trails = 100,n=1000,eps = c(5,10,20))
+
+```
+
+```{r}
+simulate.unkwnBandit = function(K = 10, n = 1000, rewardsVar = 1,maxNumChanges = 10){
+  
+  STOCHASTIC =  T
+  
+  if( runif(1,0,1) > 5){ STOCHASTIC =  F}
+  
+  numTimeChanges = ceiling(runif(1,1,maxNumChanges))
+  timeChangePoints = sort(sample(n-1,size = numTimeChanges-1,F),F)
+  timeChangePoints[numTimeChanges] = n
+  
+  #cat("\n timeChangePoints:", timeChangePoints)
+  for(i in 1:numTimeChanges){
+    
+    #cat("\n Mu_i:", mu_i)
+    if(i==1){
+      mu_i = rnorm(K, mean = 0,sd = 1) # This generates the random expectations of each arm. 
+      rewards = sapply(mu_i, function(x)rnorm(timeChangePoints[i], x, rewardsVar))} # draw the rewards based on the emeans
+    else if (STOCHASTIC) { 
+      mu_i = rbind(mu_i,mu_i)
+      rewards = rbind(rewards,sapply(mu_i[i,], function(x)rnorm(timeChangePoints[i]-timeChangePoints[i-1], x, rewardsVar)))}
+    else{
+      mu_i = rbind(mu_i,mu_i = rnorm(K, mean = 0,sd = 1) )
+      rewards = rbind(rewards,sapply(mu_i[i,], function(x)rnorm(timeChangePoints[i]-timeChangePoints[i-1], x, rewardsVar)))
+    }
+    #cat("\n length(rewards):", length(rewards))
+  }
+  list(mu_i = mu_i, rewards = rewards, timeChangePoints = timeChangePoints)
+}
+```
